@@ -1,0 +1,7 @@
+build --enable_bzlmod
+build --action_env=PATH
+build -c opt
+build --cxxopt=-std=c++17
+build --host_cxxopt=-std=c++17
+# outputs on /bigdata (/ is nearly full on pascal)
+startup --output_user_root=/bigdata/work/bond005/bazel-carlaviz

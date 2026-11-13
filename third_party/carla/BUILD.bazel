@@ -1,0 +1,29 @@
+# LibCarla 0.9.15 client: carla_ws's vendored build, unpacked by tools/unpack_carla.sh into install/ (gitignored).
+# Only //backend:carla_gt links it.
+# Archive order matters (carla_client -> rpc -> boost, then Recast/Detour): concatenated single-file globs, as
+# carla_ws's carla/BUILD.bazel does.
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "carla_client",
+    srcs = glob(["install/lib/libcarla_client.a"], allow_empty = True) +
+           glob(["install/lib/librpc.a"], allow_empty = True) +
+           glob(["install/lib/libboost_filesystem.a"], allow_empty = True) +
+           glob(["install/lib/libboost_atomic.a"], allow_empty = True) +
+           glob(["install/lib/libDetourCrowd.a"], allow_empty = True) +
+           glob(["install/lib/libDetour.a"], allow_empty = True) +
+           glob(["install/lib/libRecast.a"], allow_empty = True),
+    hdrs = glob(["install/include/**"], allow_empty = True),
+    includes = [
+        "install/include",
+        "install/include/system",
+    ],
+    linkopts = [
+        "-lpng",
+        "-ltiff",
+        "-ljpeg",
+        "-lpthread",
+    ],
+)
