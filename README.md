@@ -27,7 +27,7 @@ never goes into a production image.
 
 ```
 tools/unpack_carla.sh                 # carla_ws's vendored LibCarla 0.9.15 client -> third_party/carla/install
-bazel build //backend:carla_gt        # websocketpp from ../viz/third_party/websocketpp; nlohmann/json from the host
+bazel build //backend:carla_gt        # websocketpp vendored (third_party/websocketpp); nlohmann/json from the host
 bazel-bin/backend/carla_gt --carla_host=127.0.0.1 --carla_port=2000 --port=8091
 ```
 

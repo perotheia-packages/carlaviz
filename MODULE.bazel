@@ -1,17 +1,9 @@
 # carla_gt: carlaviz's backend revamped into viz's read-only CARLA ground-truth sidecar (REVAMP.md).
 # Built from source with the host compiler: no Conan, no prebuilt.
 #   - LibCarla 0.9.15: carla_ws's vendored client (tools/unpack_carla.sh -> third_party/carla/install).
-#   - websocketpp: viz's vendored copy (../viz/third_party/websocketpp, develop bce2586), standalone Asio (host).
+#   - websocketpp: vendored in third_party/websocketpp (develop bce2586, as viz), standalone Asio (host).
 #   - nlohmann/json: the host's (nlohmann-json3-dev).
 module(name = "carlaviz", version = "0.1.0")
 
 bazel_dep(name = "platforms", version = "0.0.11")
 bazel_dep(name = "rules_cc", version = "0.2.17")
-
-new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
-
-new_local_repository(
-    name = "websocketpp",
-    build_file = "//third_party:websocketpp.BUILD",
-    path = "../viz/third_party/websocketpp",
-)

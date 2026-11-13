@@ -1,0 +1,13 @@
+# websocketpp (BSD-3-Clause), header-only, vendored (same commit as viz's: see UPSTREAM.md). Standalone Asio
+# from the host. Vendored here (not ../viz) so carla_gt builds the same inside a consuming workspace (carla_ws).
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "websocketpp",
+    hdrs = glob(["websocketpp/**/*.hpp"]),
+    defines = ["ASIO_STANDALONE"],
+    includes = ["."],
+    linkopts = ["-lpthread"],
+)

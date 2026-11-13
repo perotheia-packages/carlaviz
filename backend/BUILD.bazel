@@ -6,13 +6,14 @@ cc_library(
     srcs = ["src/gt_server.cc"],
     hdrs = ["include/carlaviz/gt/gt_server.h"],
     includes = ["include"],
-    deps = ["@websocketpp"],
+    copts = ["-std=c++17"],   # explicit: a consuming workspace (carla_ws) sets no -std
+    deps = ["//third_party/websocketpp"],
 )
 
 cc_binary(
     name = "carla_gt",
     srcs = ["src/carla_gt.cc"],
-    copts = ["-Wno-deprecated-declarations"],
+    copts = ["-std=c++17", "-Wno-deprecated-declarations"],
     deps = [
         ":gt_server",
         "//third_party/carla:carla_client",
