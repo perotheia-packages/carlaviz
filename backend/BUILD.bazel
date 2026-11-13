@@ -1,6 +1,9 @@
 # carla_gt: the read-only CARLA ground-truth sidecar (REVAMP.md). LibCarla 0.9.15's headers want C++17.
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 
+# Public: a consuming workspace (carla_ws RIG_VIZ) stages @carlaviz//backend:carla_gt.
+package(default_visibility = ["//visibility:public"])
+
 cc_library(
     name = "gt_server",
     srcs = ["src/gt_server.cc"],
