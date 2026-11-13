@@ -148,3 +148,7 @@ cython_debug/
 # static files generated from Django application using `collectstatic`
 media
 static
+# carla_gt (Bazel)
+/bazel-*
+MODULE.bazel.lock
+/third_party/carla/install/

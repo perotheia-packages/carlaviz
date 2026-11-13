@@ -1,0 +1,20 @@
+# carla_gt: the read-only CARLA ground-truth sidecar (REVAMP.md). LibCarla 0.9.15's headers want C++17.
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+cc_library(
+    name = "gt_server",
+    srcs = ["src/gt_server.cc"],
+    hdrs = ["include/carlaviz/gt/gt_server.h"],
+    includes = ["include"],
+    deps = ["@websocketpp"],
+)
+
+cc_binary(
+    name = "carla_gt",
+    srcs = ["src/carla_gt.cc"],
+    copts = ["-Wno-deprecated-declarations"],
+    deps = [
+        ":gt_server",
+        "//third_party/carla:carla_client",
+    ],
+)

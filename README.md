@@ -1,37 +1,40 @@
+# carla_gt: carlaviz revamped into a read-only CARLA ground-truth sidecar
 
-# CarlaViz ![Build Status](https://github.com/mjxu96/carlaviz/actions/workflows/ci.yml/badge.svg) ![Deployment](https://github.com/mjxu96/carlaviz/actions/workflows/cd.yml/badge.svg)
+This is the perotheia fork of [mjxu96/carlaviz](https://github.com/mjxu96/carlaviz), branch `day0`, forked at
+f4e026d. The upstream history and the MIT licence are kept (LICENSE, Copyright (c) 2020-2023 Minjun Xu). Only
+the backend's job survives: reading CARLA's ground truth. It is served to viz's `vizd`
+(perotheia-packages/viz), which draws it. The frontend lives on in viz. Why and how: REVAMP.md.
 
-Visualize carla in the web browser.
+## What it does
 
-![nothing](./docs//images/demo2.jpg)
+`carla_gt` is its own process with a **read-only** CARLA client:
+- It never spawns, changes settings, ticks, `Listen()`s to a sensor or destroys anything.
+- It samples the client's world snapshot at up to 10 Hz and reads the map once per episode.
+- It fetches the actor list once, and again only when a new actor id appears.
+- It serves ground truth on `ws://<bind>:8091/` as JSON (viz's GT spec draft 1): `hello`, `map` (lane centres
+  and borders, the traffic lights' trigger areas), `actors` (static descriptions), `frame` (pose, velocity and
+  acceleration of every vehicle and walker; light states), and `stats` (1 Hz).
+- Everything is in map ENU: CARLA's (x, -y, z), with yaw and pitch negated, in radians.
 
-## Version Supported
-| Platform | Supported Carla Version | Docker/Source |
-| ------------- | --------------------- | --- |
-| Ubuntu | 0.9.6 - 0.9.15| Docker image and source |
-| Windows | 0.9.9.2 - 0.9.15| Docker image and source |
+**Zero cost with nobody watching:** it joins CARLA only while a client is connected, and leaves CARLA's tick
+stream `--idle_s` (10) seconds after the last one goes. It builds no frame when no client is connected, and a
+slow client loses frames (counted) instead of queueing them. It runs at nice 19 + SCHED_IDLE.
 
-## Instructions
-### Docker image
-Docker image is provided. Run following command to pull this image (including frontend and backend).
+It is a **test-only** component. carla_ws's `RIG_VIZ` layer adds it next to viz's VizApp, with its own port; it
+never goes into a production image.
 
-```bash
-# pull the image based on your carla version
-docker pull mjxu96/carlaviz:0.9.15
+## Build (from source, host compiler; no Conan, no prebuilt)
+
+```
+tools/unpack_carla.sh                 # carla_ws's vendored LibCarla 0.9.15 client -> third_party/carla/install
+bazel build //backend:carla_gt        # websocketpp from ../viz/third_party/websocketpp; nlohmann/json from the host
+bazel-bin/backend/carla_gt --carla_host=127.0.0.1 --carla_port=2000 --port=8091
 ```
 
-### How to run it?
-Here is a simple [example](./examples) to run it.
+## What was removed from upstream
 
-### Build from source
-Although the container image is out-of-box to use, you are also welcome to build on your own!
-
-Refer to this [page](./docs/build.md) for building instructions.
-
-## Contribution
-Please read [this](./CONTRIBUTION.md).
-
-## Author and Collaboration
-[Minjun Xu](https://github.com/mjxu96)   mjxu96@outlook.com
-
-Please contact me via email if you want more collaborations.
+- The React frontend: viz keeps the one it builds.
+- The sensor listeners: cameras come from the stack's own RDS streams.
+- The XVIZ translation: vizd does that.
+- `WaitForTick` per frame and `GetActor` per actor per frame.
+- Conan, CMake, Docker, the CI workflows, and the examples (they spawn actors).
