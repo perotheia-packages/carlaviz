@@ -14,7 +14,7 @@
 // pitch negated (rad).
 //
 //   carla_gt [--carla_host=127.0.0.1] [--carla_port=2000] [--bind=127.0.0.1] [--port=8091] [--rate=10]
-//            [--ego_role=hero] [--idle_s=10] [--priority=idle|normal]
+//            [--ego_role=hero] [--idle_s=10] [--priority=idle|normal] [--record=<run dir>/carla_gt.jsonl]
 #include "carlaviz/gt/gt_server.h"
 
 #include <carla/client/Actor.h>
@@ -38,6 +38,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <map>
 #include <memory>
 #include <string>
@@ -52,6 +53,28 @@ using json = nlohmann::json;
 namespace {
 
 std::atomic<bool> g_stop{false};
+
+// --record=<file>: every GT message published, one JSON line {"rx_wall_ns": <CLOCK_REALTIME ns>, "msg": <it>}, on
+// the clock theia's tap stamps its lines with (rx_wall_ns), so a run dir (tap + carla_gt.jsonl) replays in viz.
+FILE* g_rec = nullptr;
+uint64_t g_recorded = 0;
+void record(const std::string& m) {
+  if (!g_rec || m.empty()) return;
+  timespec ts{};
+  clock_gettime(CLOCK_REALTIME, &ts);
+  std::fprintf(g_rec, "{\"rx_wall_ns\": %lld, \"msg\": %s}\n",
+               (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec, m.c_str());
+  ++g_recorded;
+}
+// Publish = send to the websocket clients and record.
+struct Pub {
+  carlaviz::gt::GtServer& srv;
+  void hello(std::string m) { record(m); srv.SetHello(std::move(m)); }
+  void map(std::string m) { record(m); srv.SetMap(std::move(m)); }
+  void actors(std::string m) { record(m); srv.SetActors(std::move(m)); }
+  void frame(std::string m) { record(m); srv.SendFrame(std::move(m)); }
+  void stats(std::string m) { record(m); srv.SendStats(std::move(m)); }
+};
 void on_signal(int) { g_stop = true; }
 
 double r2(double v) { return std::round(v * 100.0) / 100.0; }      // 1 cm
@@ -125,6 +148,7 @@ struct Flags {
 
 // One CARLA session: from the first client to --idle_s seconds after the last one.
 void session(carlaviz::gt::GtServer& srv, const Flags& f) {
+  Pub pub{srv};
   using clk = std::chrono::steady_clock;
   const std::string host = f.get("carla_host", "127.0.0.1");
   const auto port = uint16_t(f.num("carla_port", 2000));
@@ -152,7 +176,7 @@ void session(carlaviz::gt::GtServer& srv, const Flags& f) {
     next += period;
     std::this_thread::sleep_until(next);
     if (clk::now() - next > 5 * period) next = clk::now();
-    if (srv.Clients() > 0) {
+    if (srv.Clients() > 0 || g_rec) {   // a client watches, or we record
       last_client = clk::now();
     } else if (std::chrono::duration<double>(clk::now() - last_client).count() > idle_s) {
       std::fprintf(stderr, "[carla_gt] nobody watching for %.0f s: leaving CARLA\n", idle_s);
@@ -181,7 +205,7 @@ void session(carlaviz::gt::GtServer& srv, const Flags& f) {
       json hello{{"v", 1}, {"type", "hello"}, {"server", client.GetServerVersion()},
                  {"client", client.GetClientVersion()}, {"episode", episode}, {"map", map_name},
                  {"ego_role", ego_role}, {"rate_hz", rate}};
-      srv.SetHello(hello.dump());
+      pub.hello(hello.dump());
       json m{{"v", 1}, {"type", "map"}, {"episode", episode}, {"name", map_name}, {"lanes", std::move(lanes)},
              {"lights", json::array()}};
       // (map is sent after the actor list, when the light trigger areas are known)
@@ -210,7 +234,7 @@ void session(carlaviz::gt::GtServer& srv, const Flags& f) {
         }
         cache[a->GetId()] = std::move(ai);
       }
-      srv.SetMap(m.dump());
+      pub.map(m.dump());
     }
     if (snap.GetFrame() == last_frame) continue;   // the server has not moved
     last_frame = snap.GetFrame();
@@ -267,7 +291,7 @@ void session(carlaviz::gt::GtServer& srv, const Flags& f) {
                         {"bbox", {{"c", json::array({r2(ai.bb.location.x), r2(-ai.bb.location.y), r2(ai.bb.location.z)})},
                                   {"e", json::array({r2(ai.bb.extent.x), r2(ai.bb.extent.y), r2(ai.bb.extent.z)})}}}});
       }
-      srv.SetActors(json{{"v", 1}, {"type", "actors"}, {"list", std::move(list)}}.dump());
+      pub.actors(json{{"v", 1}, {"type", "actors"}, {"list", std::move(list)}}.dump());
       actors_dirty = false;
     }
 
@@ -288,14 +312,14 @@ void session(carlaviz::gt::GtServer& srv, const Flags& f) {
                                     r2(as.velocity.z), r2(as.acceleration.x), r2(-as.acceleration.y),
                                     r2(as.acceleration.z)}));
     }
-    srv.SendFrame(json{{"v", 1}, {"type", "frame"}, {"frame", snap.GetFrame()}, {"sim_s", sim_s},
+    pub.frame(json{{"v", 1}, {"type", "frame"}, {"frame", snap.GetFrame()}, {"sim_s", sim_s},
                        {"wall_s", wall_s}, {"actors", std::move(actors)}, {"lights", std::move(lights)}}
                       .dump());
     ++frames_sent;
     if (clk::now() >= next_stats) {
       next_stats = clk::now() + std::chrono::seconds(1);
       const auto st = srv.GetStats();
-      srv.SendStats(json{{"v", 1}, {"type", "stats"}, {"server_fps", r2(fps)}, {"sent", frames_sent},
+      pub.stats(json{{"v", 1}, {"type", "stats"}, {"server_fps", r2(fps)}, {"sent", frames_sent},
                          {"skipped_slow_client", st.skipped}, {"actor_list_rpcs", actor_rpcs},
                          {"clients", st.clients}}
                         .dump());
@@ -311,7 +335,8 @@ int main(int argc, char** argv) {
     std::string a = argv[i];
     if (a == "-h" || a == "--help") {
       std::puts("carla_gt [--carla_host=127.0.0.1] [--carla_port=2000] [--bind=127.0.0.1] [--port=8091]\n"
-                "         [--rate=10] [--ego_role=hero] [--idle_s=10] [--priority=idle|normal]");
+                "         [--rate=10] [--ego_role=hero] [--idle_s=10] [--priority=idle|normal]\n"
+                "         [--record=<run dir>/carla_gt.jsonl]   (viz's acceptance replay; holds CARLA while recording)");
       return 0;
     }
     if (a.rfind("--", 0) != 0) continue;
@@ -328,6 +353,16 @@ int main(int argc, char** argv) {
   signal(SIGTERM, on_signal);
   signal(SIGPIPE, SIG_IGN);
 
+  const std::string rec = f.get("record", "");
+  if (!rec.empty()) {
+    g_rec = std::fopen(rec.c_str(), "w");
+    if (!g_rec) {
+      std::perror(("[carla_gt] --record=" + rec).c_str());
+      return 1;
+    }
+    std::setvbuf(g_rec, nullptr, _IOFBF, 1 << 20);
+    std::fprintf(stderr, "[carla_gt] recording to %s (holds the CARLA session while recording)\n", rec.c_str());
+  }
   carlaviz::gt::GtServer::Options so;
   so.bind = f.get("bind", "127.0.0.1");
   so.port = uint16_t(f.num("port", 8091));
@@ -337,7 +372,7 @@ int main(int argc, char** argv) {
                so.bind.c_str(), so.port);
 
   while (!g_stop) {
-    if (srv.Clients() == 0) {
+    if (srv.Clients() == 0 && !g_rec) {
       std::this_thread::sleep_for(std::chrono::milliseconds(200));
       continue;
     }
@@ -353,5 +388,9 @@ int main(int argc, char** argv) {
   }
   std::fprintf(stderr, "[carla_gt] stopping\n");
   srv.Stop();
+  if (g_rec) {
+    std::fclose(g_rec);
+    std::fprintf(stderr, "[carla_gt] recorded %llu messages\n", (unsigned long long)g_recorded);
+  }
   return 0;
 }
