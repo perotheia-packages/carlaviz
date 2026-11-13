@@ -189,7 +189,8 @@ void session(carlaviz::gt::GtServer& srv, const Flags& f) {
                    std::chrono::duration<double, std::milli>(clk::now() - t0).count());
       // New actors -> one actor-list RPC (descriptions are static per actor).
       ++actor_rpcs;
-      for (const auto& a : *world.GetActors()) {
+      auto actor_list = world.GetActors();   // keep the list alive for the loop
+      for (const auto& a : *actor_list) {
         ActorInfo ai;
         ai.type = a->GetTypeId();
         if (ai.type.rfind("vehicle.", 0) == 0) ai.kind = Kind::VEHICLE;
@@ -230,7 +231,8 @@ void session(carlaviz::gt::GtServer& srv, const Flags& f) {
     }
     if (unknown) {
       ++actor_rpcs;
-      for (const auto& a : *world.GetActors()) {
+      auto actor_list = world.GetActors();   // keep the list alive for the loop
+      for (const auto& a : *actor_list) {
         if (cache.count(a->GetId())) continue;
         ActorInfo ai;
         ai.type = a->GetTypeId();
