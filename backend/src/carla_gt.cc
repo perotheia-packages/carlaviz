@@ -224,6 +224,9 @@ void session(carlaviz::gt::GtServer& srv, const Flags& f) {
         for (const auto& at : a->GetAttributes())
           if (at.GetId() == "role_name") ai.role = at.GetValue();
         ai.ego = ai.role == ego_role;
+        // the chair's kinematic plant: the hero is an INVISIBLE carrier (a sensor actor, chariot_ws KINEMATIC-PLANT.md):
+        // still the ego (drawn as the vehicle it stands for)
+        if (ai.ego && ai.kind == Kind::OTHER) ai.kind = Kind::VEHICLE;
         if (ai.kind == Kind::LIGHT) {
           ai.light = boost::dynamic_pointer_cast<cc::TrafficLight>(a);
           if (ai.light) {
@@ -266,6 +269,7 @@ void session(carlaviz::gt::GtServer& srv, const Flags& f) {
         for (const auto& at : a->GetAttributes())
           if (at.GetId() == "role_name") ai.role = at.GetValue();
         ai.ego = ai.role == ego_role;
+        if (ai.ego && ai.kind == Kind::OTHER) ai.kind = Kind::VEHICLE;   // the invisible carrier (as above)
         cache[a->GetId()] = std::move(ai);
       }
       for (const auto& as : snap)   // gone before we asked: remember, so we do not ask again
